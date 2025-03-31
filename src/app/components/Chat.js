@@ -3,6 +3,11 @@
 import { useState, useRef, useEffect } from 'react';
 import styles from './Chat.module.css';
 import { sendMessageToSiliconFlow } from '../services/api';
+import Avatar from './Avatar';
+import ReactMarkdown from 'react-markdown';
+import rehypeSanitize from 'rehype-sanitize';
+import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
 
 export default function Chat() {
   const [messages, setMessages] = useState([]);
@@ -33,10 +38,13 @@ export default function Chat() {
     if (!inputMessage.trim() || isLoading) return;
 
     const userMessage = {
-      id: crypto.randomUUID(), // 使用更可靠的唯一ID生成方法
+      id: crypto.randomUUID(),
       text: inputMessage,
       sender: 'user',
-      timestamp: getCurrentTime()
+      timestamp: new Date().toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
     };
 
     // 添加用户消息
@@ -50,7 +58,10 @@ export default function Chat() {
       id: aiMessageId,
       text: '',
       sender: 'bot',
-      timestamp: getCurrentTime()
+      timestamp: new Date().toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
     };
     setMessages(prev => [...prev, aiMessage]);
 
@@ -80,25 +91,76 @@ export default function Chat() {
     }
   };
 
+  // Markdown组件，用于渲染Markdown文本
+  const MarkdownContent = ({ content }) => {
+    return (
+      <div className={styles.markdownContent}>
+        <ReactMarkdown 
+          rehypePlugins={[rehypeSanitize, rehypeRaw]}
+          remarkPlugins={[remarkGfm]}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
+    );
+  };
+
+  const renderBotMessage = (message) => {
+    // 将消息文本按照标题分割成不同部分
+    const sections = message.text.split('###').filter(Boolean);
+    
+    return sections.map((section, index) => {
+      const isDesigner = section.includes('设计师回复');
+      const role = isDesigner ? 'designer' : 'professor';
+      
+      // 分割思考过程和最终答案
+      const [title, ...content] = section.split('[思考过程]');
+      const [thoughtProcess, finalAnswer] = content.join('').split(isDesigner ? '[最终方案]' : '[专业点评]');
+
+      return (
+        <div key={index} className={`${styles.botMessage} ${styles[role]}`}>
+          <Avatar role={role} />
+          <div className={styles.messageContent}>
+            <div className={styles.roleTitle}>
+              <h3>{isDesigner ? '室内设计师' : '设计评论教授'}</h3>
+            </div>
+            {thoughtProcess && (
+              <div className={styles.thoughtProcess}>
+                <strong>思考过程：</strong>
+                <MarkdownContent content={thoughtProcess} />
+              </div>
+            )}
+            {finalAnswer && (
+              <div className={styles.finalAnswer}>
+                <strong>{isDesigner ? '设计方案：' : '专业点评：'}</strong>
+                <MarkdownContent content={finalAnswer} />
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    });
+  };
+
   return (
     <div className={styles.chatContainer}>
       <div className={styles.chatHeader}>
-        <h2>AI 聊天助手</h2>
+        <h2>AI 设计对话</h2>
       </div>
       
       <div className={styles.messageList}>
         {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`${styles.messageItem} ${
-              message.sender === 'user' ? styles.userMessage : styles.botMessage
-            }`}
-          >
-            <div className={styles.messageContent}>
-              <p>{message.text}</p>
-              <span className={styles.timestamp}>{message.timestamp}</span>
+          message.sender === 'user' ? (
+            <div
+              key={message.id}
+              className={`${styles.messageItem} ${styles.userMessage}`}
+            >
+              <div className={styles.messageContent}>
+                <p>{message.text}</p>
+                <span className={styles.timestamp}>{message.timestamp}</span>
+              </div>
             </div>
-          </div>
+          ) : renderBotMessage(message)
         ))}
         <div ref={messagesEndRef} />
       </div>
@@ -108,7 +170,7 @@ export default function Chat() {
           type="text"
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
-          placeholder={isLoading ? "AI正在思考..." : "输入消息..."}
+          placeholder={isLoading ? "AI正在思考..." : "请描述您的设计需求..."}
           className={styles.messageInput}
           disabled={isLoading}
         />
